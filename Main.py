@@ -32,10 +32,10 @@ if __name__ == "__main__":
         net = DataLoader(file_path).load_data()
         
         # Visualize network
-        GraphVisualizer(net).draw_graph()
+        # GraphVisualizer(net).draw_graph()
 
         # Initialize AUC storage
-        num_of_methods = sum(num_in_each_method[i] for i in methods)
+        num_of_methods = sum(num_in_each_method[i - 1] for i in methods)
         auc_of_all_predictors = np.zeros((num_experiments, num_of_methods))
         predictors_name = []
 

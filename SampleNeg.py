@@ -47,7 +47,7 @@ class SampleNeg:
             net = self.train + self.test
 
         # Ensure that train and test do not overlap (assert no double-counting of edges)
-        assert np.max(net.data) == 1, "Train and test sets should not overlap"
+        assert (self.train.multiply(self.test)).nnz == 0, "Train and test sets should not overlap"
 
         # Negative network (non-edges)
         neg_net = np.triu(-(net.toarray() - 1), k=1)  # Upper triangular to avoid duplicates

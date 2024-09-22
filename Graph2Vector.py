@@ -30,6 +30,10 @@ class Graph2Vector:
             data (array): The constructed feature vectors, each row is a link's vector representation.
             label (array): A column vector of links' labels (1 for positive, 0 for negative).
         """
+        # Ensure train_neg has 3 columns to match train_pos
+        if self.neg.shape[1] == 2:  # If train_neg has only 2 columns (node pairs)
+            self.neg = np.hstack([self.neg, np.zeros((self.neg.shape[0], 1), dtype=int)])  # Add a column of zeros
+
         all_links = np.vstack([self.pos, self.neg])  # Combine positive and negative links
         pos_size = self.pos.shape[0]
         neg_size = self.neg.shape[0]
@@ -69,7 +73,7 @@ class Graph2Vector:
             sample (array): The vector representation of the enclosing subgraph.
         """
         D = int(self.K * (self.K - 1) / 2)  # Length of the output vector
-        i, j = ind  # The link (i, j) for which we need the subgraph
+        i, j = ind[:2]  # Extract only the first two values (i, j), ignoring the third (link value)
         
         # Initialize nodes and distances
         nodes = np.array([i, j])  # Initial set of nodes (the two nodes in the link)
@@ -90,6 +94,7 @@ class Graph2Vector:
             # Check if no more new neighbors
             if fringe.size == 0:
                 # Build subgraph for the current set of nodes
+                self.A = self.A.tocsr()  # Convert to CSR format
                 subgraph = self.A[np.ix_(nodes, nodes)]
                 subgraph[0, 1] = subgraph[1, 0] = 0  # Remove the original link information
                 break
@@ -111,14 +116,18 @@ class Graph2Vector:
             
             # Check if we have enough nodes for the subgraph
             if len(nodes) >= self.K:
+                self.A = self.A.tocsr()  # Convert to CSR format
                 nodes = nodes[:self.K]  # Limit the nodes to K
                 subgraph = self.A[np.ix_(nodes, nodes)]
                 subgraph[0, 1] = subgraph[1, 0] = 0  # Remove the original link information
                 break
-        
+        # Ensure indices are integers before calling ravel_multi_index
+        links = links.astype(int)
+
         # Step: Calculate link-weighted subgraph
         links_ind = np.ravel_multi_index((links[:, 0], links[:, 1]), self.A.shape)
-        A_copy = self.A / (dist + 1) # if a link between two existing nodes < dist+1, it must be in 'links'. The only links not in 'links' are the dist+1 links between some farthest nodes in 'nodes', so here we weight them by dist+1
+        A_copy = self.A.toarray() / (dist + 1) # if a link between two existing nodes < dist+1, it must be in 'links'. The only links not in 'links' are the dist+1 links between some farthest nodes in 'nodes', so here we weight them by dist+1
+        links_dist[links_dist == 0] = np.inf  # Set distances of 0 to infinity to avoid division by zero
         A_copy.ravel()[links_ind] = 1.0 / links_dist  # Weight by inverse of distance
         
         # Keep the minimum distance for each edge
@@ -165,13 +174,20 @@ class Graph2Vector:
         Returns:
             N (array): List of neighboring edges (pairs of nodes) for all links in fringe.
         """
-        N = []
+        # Convert A to csr_matrix if it's not already
+        A = A.tocsr()  # Ensure that A is in CSR format for efficient row operations
+        N = np.empty((0, 2), dtype=int)  # Initialize N as an empty array
+
         for edge in fringe:
             i, j = edge
             
+            # Ensure i and j are integers
+            i = int(i)
+            j = int(j)
+            
             # Find neighbors of node i (row i)
-            row_neighbors = np.where(A[i, :] > 0)[0]  # Nodes connected to i
-            col_neighbors = np.where(A[:, j] > 0)[0]  # Nodes connected to j
+            row_neighbors = np.where(A[i, :].toarray().flatten() > 0)[0]  # Nodes connected to i
+            col_neighbors = np.where(A[:, j].toarray().flatten() > 0)[0]  # Nodes connected to j
             
             # Add new edges (i, row neighbors) and (col neighbors, j)
             new_edges = np.vstack([
@@ -180,7 +196,7 @@ class Graph2Vector:
             ])
             
             # Append and deduplicate while preserving order
-            if N == []:
+            if N.size == 0:
                 N = new_edges
             else:
                 N = np.vstack([N, new_edges])
@@ -245,7 +261,7 @@ class Graph2Vector:
 
         
         avg_dist = np.sqrt(dist_to_1 * dist_to_2)
-        _, _, avg_dist_colors = np.unique(avg_dist, return_inverse=True, return_counts=False)
+        _, avg_dist_colors = np.unique(avg_dist, return_inverse=True)
         
         # Switch different graph labeling methods
         """
